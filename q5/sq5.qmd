@@ -190,7 +190,11 @@ There is no significant visual relationship between public trust and government 
 
 # Hypothesis Testing
 
-We wish to complete an ANOVA test to determine whether the relationship between government expenditure as a proportion of gdp and the percent of Pew Research respondents who 'trust the government to do what is right just about always/most of the time'  differs by political party leaning. To run an ANOVA-type test on covariance between the variables, we will run a factorial ANOVA with a continuous covariate with interaction, also known as an ANCOVA (Analysis of Covariance) test. First we must prepare the data and check assumptions.
+We wish to complete an ANOVA test to determine whether the relationship between government expenditure as a proportion of gdp and the percent of Pew Research respondents who 'trust the government to do what is right just about always/most of the time'  differs by political party leaning. To run an ANOVA-type test on covariance between the variables, we will run a factorial ANOVA with a continuous covariate with interaction, also known as an ANCOVA (Analysis of Covariance) test.
+
+The main difference between the ANOVA test and the ANCOVA test is the addition of regression. In this situation, we are able to compare the covariances of different variables in different comnbinations, instead of simply comparing the means. This will allow us to compare the correlation between government expenditure and public trust between two categories, Republican and Democrat respondents. 
+
+First we must prepare the data and check assumptions.
 
 
 ## Data Preparation
