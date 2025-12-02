@@ -1,4 +1,4 @@
-# Project README
+# README.md
 
 This repository contains folders labeled by question number. Each folder includes analysis, code, and results. Below is a list of all questions covered in the project.
 
