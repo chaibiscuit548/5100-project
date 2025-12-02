@@ -1,0 +1,602 @@
+---
+title: "Confidence in Education"
+author: "Ari Gelbard"
+format: 
+  html:
+    embed-resources: true
+editor: visual
+toc: true
+---
+
+------------------------------------------------------------------------
+
+This document aims to explores the relationship between confidence in the US education system and actual government spending on education.
+
+# Loading Packages and Data
+
+In this section, we pull in data downloaded from the Bureau of Economic Analysis (BEA) website and from the General Social Survey (GSS).
+
+```{r, include=FALSE}
+### Load packages
+library(tidyverse)
+library(readxl)
+require(forecast)
+library(zoo)
+library(kableExtra)
+library(astsa)
+
+### Load data
+govt_raw <- read_excel("data/nipa_3155.xlsx")
+gdp_raw  <- read_excel("data/nipa_115.xlsx")
+gss_raw  <- read_excel("data/gss_educ.xlsx")
+```
+
+# Cleaning data
+
+```{r}
+## BEA NIPA data on education spending
+govt <- govt_raw %>%
+  select(-1) %>%
+  slice(-(1:4)) %>%
+  filter(row_number() %in% c(1,3,31)) %>%
+  t() %>% as.data.frame() %>%
+  slice(-1) %>%
+  rename(year = V1, govt = V2, educ = V3) %>%
+  mutate(educ = as.numeric(educ),
+         govt = as.numeric(govt),
+         year = as.numeric(year)) %>%
+  mutate(educ_govt = educ / govt)
+
+gdp <- gdp_raw %>%
+  select(-1) %>%
+  slice(-(1:4)) %>%
+  filter(row_number() %in% c(1,3)) %>%
+  t() %>% as.data.frame() %>%
+  slice(-1) %>%
+  rename(year = V1, gdp = V2) %>%
+  mutate(year = as.numeric(year),
+         gdp  = as.numeric(gdp))
+
+nipa <- govt %>%
+  left_join(gdp, by = "year") %>%
+  mutate(educ_gdp = educ/gdp)
+```
+
+```{r}
+## GSS Education variables
+gss_count <- gss_raw %>%
+  filter(nateduc %in% c("TOO LITTLE","ABOUT RIGHT","TOO MUCH") & 
+           coneduc %in% c("A GREAT DEAL","HARDLY ANY","ONLY SOME")) %>%
+  select(-id_) %>%
+  mutate(year = as.numeric(year))  %>%
+  pivot_longer(
+    cols = c(nateduc, coneduc),
+    names_to = "question",
+    values_to = "response"
+  ) %>%
+  group_by(year, question, response) %>%
+  summarise(n = n(), .groups = "drop")
+```
+
+# Analysis
+
+First, lets look at government spending over time in the US. Unfortunately, the BEA's data on inflation adjusted spending only goes back to 2007, which doesn't give us a large sample. As such, we instead use nominal spending on education and divide it by total nominal government spending and by nominal GDP. This proportion gives us insight into how the government is prioritizing spending on education relative to all other spending.
+
+```{r}
+## NIPA Data
+ggplot(data = nipa, aes(x=year,y=educ_govt)) +
+  geom_line() + 
+  labs(title="Proportion of Government Spending on Education\nto Total Government Spending Over time",
+       x = "Year",
+       y = "Proportion") +
+  theme_minimal()
+```
+
+This chart shows that the government has prioritized education more since the 1960s, however this proportion has remained roughly stagnant since the 2000s
+
+```{r}
+ggplot(data = nipa, aes(x=year,y=educ_gdp)) +
+  geom_line() + 
+  labs(title="Proportion of Government Spending on Education to GDP Over time",
+       x = "Year",
+       y = "Proportion") +
+  theme_minimal()
+```
+
+This chart shows us that spending on education relative to the total output of the economy increased rapidlyin the 1960s, but has remained somewhat stagnant since the 1970s.
+
+Now that we've seen how spending has changed over time, lets look at confidence in education. The GSS has two surveys that are helpful to us.
+
+-   The *coneduc* survey asks whether the respondent has a great deal of confidence, only some confidence, or hardly any confidence in the institution of education in the US.
+-   The *nateduc* survey asks if the respondent thinks the US government is spending too much, too little, or the right amount on education.
+
+Let's look at how survey responses for each survey have evolved over time with some line charts.
+
+```{r}
+## GSS Data
+gss_prop <- gss_count %>%
+  group_by(year, question) %>%
+  mutate(prop = n / sum(n)) 
+
+# Confidence in Education
+coneduc_prop <- gss_prop %>%
+  filter(question == "coneduc")
+
+ggplot(coneduc_prop, aes(x = year, y = prop, color = response)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "How much confidence do you have in the education\nsystem in the US?",
+    x = "Year",
+    y = "Proportion of Respondents",
+    color = "Response"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5))
+```
+
+It appears that confidence in the education system has decreased over time. The proportion of respondents who have a great deal of confidence has decreased from around 40% to less than 20% and the proportion who have hardly any confidence has increased from less than 10% to around 25%.
+
+We can also perform a chi-squared test for independence to test if the distribution of GSS responses is different between two time periods. The hypotheses are:
+
+$H_0:$ The distribution of responses to how much confidence in education is the same prior to 1990 vs after 1990.
+
+$H_a:$ The distribution of responses is not the same prior to 1990 vs after 1990.
+
+```{r}
+# Choose two periods for comparison (example: early vs recent)
+gss_test1 <- gss_raw %>%
+  filter(coneduc %in% c("HARDLY ANY","ONLY SOME","A GREAT DEAL")) %>%
+  mutate(period = ifelse(year <= 1990, "Early", "Late")) %>%
+  group_by(period, coneduc) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = coneduc, values_from = n)
+
+gss_test1
+
+# Run the chi-square test
+chisq.test(gss_test1[ , -1])   
+```
+
+Since the p-value is less than 0.05, we can reject the null hypothesis at the 5% level. In other words, we have sufficient statistical evidence to conclude that the distribution of responses is different prior to 1990 vs after 1990.
+
+What about feelings about education spending?
+
+```{r}
+# Spending on Education
+nateduc_prop <- gss_prop %>%
+  filter(question == "nateduc")
+
+ggplot(nateduc_prop, aes(x = year, y = prop, color = response)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Is US spending on education too much, too little, or about right?",
+    x = "Year",
+    y = "Proportion of Respondents",
+    color = "Response"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5))
+```
+
+Since the beginning of the survey, most respondents believed that the government was spending too little on education, and this proportion has increased significantly to almost 80% of respondents.
+
+We can also perform a chi-squared test for independence to test if the distribution of GSS responses is different between two time periods. The hypothese are:
+
+$H_0:$ The distribution of responses to how much are we spending on education is the same prior to 1990 vs after 1990.
+
+$H_a:$ The distribution of responses is not the same prior to 1990 vs after 1990.
+
+```{r}
+# Choose two periods for comparison (example: early vs recent)
+gss_test2 <- gss_raw %>%
+  filter(nateduc %in% c("TOO LITTLE","ABOUT RIGHT","TOO MUCH")) %>%
+  mutate(period = ifelse(year <= 1990, "Early", "Late")) %>%
+  group_by(period, nateduc) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = nateduc, values_from = n)
+
+gss_test2
+
+# Run the chi-square test
+chisq.test(gss_test2[ , -1])   
+```
+
+Again, since the p-value is less than 0.05, we can reject the null hypothesis at the 5% level. In other words, we have sufficient statistical evidence to conclude that the distribution of responses is different prior to 1990 vs after 1990.
+
+Now lets investigate how spending and confidence in education relate to each other. The following charts show how opinions about the amount of education spending relate to education spending as a percent of total government spending and GDP.
+
+```{r}
+nateduc_nipa <- gss_prop %>%
+  filter(question == "nateduc") %>%
+  left_join(nipa, by = "year")
+
+ggplot(nateduc_nipa, aes(x = 100*educ_govt, y = prop)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ response) +
+  labs(
+    title = "Confidence in US amount of Education Spending vs\nEducation Share of Total Government Spending",
+    x = "Education Spending as % of Total Government Spending",
+    y = "Proportion of Respondents"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw()
+```
+
+The negative slope for the respondents who believe the government spends about the right amount on education and the positive slope for the those who believe the government spends too little on education indicate that even when the government prioritize education more, people still believe that the government isn't spending enough. This may indicate that despite some efforts to spend more, the government still isn't spending as much on education as they should.
+
+```{r}
+ggplot(nateduc_nipa, aes(x = 100*educ_gdp, y = prop)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ response) +
+  labs(
+    title = "Confidence in Amoutn of US Education Spending vs\nEducation Share of GDP",
+    x = "Education Spending as % of GDP",
+    y = "Proportion of Respondents"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw()
+```
+
+This chart shows the same relationship as the previous, although to a lesser extent. This further reinforces that the people demand even more spending on education.
+
+Doing the same with confidence in the education system gives similar results.
+
+```{r}
+coneduc_nipa <- gss_prop %>%
+  filter(question == "coneduc") %>%
+  left_join(nipa, by = "year")
+
+ggplot(coneduc_nipa, aes(x = 100*educ_govt, y = prop)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ response) +
+  labs(
+    title = "Confidence in the US Education System vs\nEducation Share of Total Government Spending",
+    x = "Education Spending as % of Total Government Spending",
+    y = "Proportion of Respondents"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw()
+```
+
+```{r}
+ggplot(coneduc_nipa, aes(x = 100*educ_gdp, y = prop)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ response) +
+  labs(
+    title = "Confidence in the US Education System vs Education Share of GDP",
+    x = "Education Spending as % of GDP",
+    y = "Proportion of Respondents"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw()
+```
+
+Even as government spending on increases, people still increasingly have lost trust in the education system in the US.
+
+# ARIMA
+
+In this section, we analyze and attempt to forecast the time series for confidence in education and education spending.
+
+## Educational Confidence
+
+First lets check for stationarity.
+
+```{r}
+coneduc_ts_df <- coneduc_prop %>%
+  ungroup () %>%
+  filter(response == "HARDLY ANY") %>%
+  select(year,n) %>%
+  arrange(year) %>%
+  complete(year = full_seq(year, 1)) %>%     
+  mutate(n = na.approx(n, year, na.rm = FALSE))
+
+coneduc_ts <- ts(coneduc_ts_df$n,
+                 start = min(coneduc_ts_df$year),
+                 end   = max(coneduc_ts_df$year),
+                 frequency = 1)
+
+ggAcf(coneduc_ts, 50) + 
+  ggtitle("Autocorrelation Function for Numer of Respondents\nWho have HARDLY ANY Confidence in the Education System") + 
+  theme_minimal()
+```
+
+This plot shows clear autocorrleation. Lets confirm stationarity with an augmented Dickey Fuller test.
+
+```{r}
+tseries::adf.test(coneduc_ts)
+```
+
+Because the p-values for this test is greater than 0.05, we cannot reject the null hypothesis that these series are not stationary.
+
+Lets try to correct this with differencing.
+
+```{r}
+diff_1 <- diff(coneduc_ts)
+ggAcf(diff_1,50) +
+  ggtitle("ACF of First-Order Differenced Series") +
+  theme_minimal()
+```
+
+```{r}
+ggPacf(diff_1,50) +
+  ggtitle("ACF of First-Order Differenced Series") +
+  theme_minimal()
+```
+
+The ACF and PACF plots for the differenced series indicate that the data is now stationary and does not need additional differencing.
+
+Now that we know that one difference is necessary, lets move on to a parameter search.
+
+```{r,warning=FALSE}
+# Define parameter ranges
+p_range <- 0:7
+d_range <- 1
+q_range <- 0:9  
+
+# Calculate total combinations
+n_combinations <- length(p_range) * length(d_range) * length(q_range)
+
+# Create an empty matrix to store results
+results_matrix <- matrix(NA, nrow = n_combinations, ncol = 6)
+
+# Initialize index for matrix row
+i <- 1
+
+# Loop through combinations of ARIMA model parameters
+for (q in q_range) {
+  for (p in p_range) {
+    d <- d_range
+
+    # Fit ARIMA model with specified (p,d,q)
+    model <- Arima(coneduc_ts, order = c(p, d, q), include.drift = TRUE)
+
+    # Store model parameters and AIC/BIC/AICc values in matrix
+    results_matrix[i, ] <- c(p, d, q, model$aic, model$bic, model$aicc)
+
+    # Increment row index
+    i <- i + 1
+  }
+}
+
+# Convert matrix to data frame
+results_df <- as.data.frame(results_matrix)
+colnames(results_df) <- c("p", "d", "q", "AIC", "BIC", "AICc")
+
+# Find the row with the lowest AIC
+highlight_row <- which.min(results_df$AIC)
+
+# Generate kable table with highlighting for the row with the lowest AIC
+knitr::kable(results_df, align = 'c', caption = "Comparison of ARIMA Models") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  # Highlight row in yellow
+```
+
+```{r}
+auto.arima(coneduc_ts)
+```
+
+According to the parameter search and the auto.arima() function, our best model is a simple ARIMA(0,1,0). Lets quickly look at the model diagnostics.
+
+```{r}
+model_output1 <- capture.output(sarima(coneduc_ts, 0, 1, 0))
+```
+
+```{r}
+# Find the line numbers dynamically based on a keyword
+start_line <- grep("Coefficients", model_output1)  # Locate where coefficient details start
+end_line <- length(model_output1)  # Last line of output
+
+# Print the relevant section automatically
+cat(model_output1[start_line:end_line], sep = "\n")
+```
+
+The **Residual Plot** shows nearly consistent fluctuation around zero, suggesting that the residuals are nearly stationary with a constant mean and finite variance over time.
+
+The **Autocorrelation Function (ACF)** of the residuals reveals no significant autocorrelations.
+
+The **Q-Q Plot** indicates that the residuals follow a near-normal distribution, with minor deviations at the tails, which is typical in time series data.
+
+The **Ljung-Box Test** p-values remain above the 0.05 significance level, implying no significant autocorrelations left in the residuals.
+
+```{r}
+fit <- Arima(coneduc_ts, order = c(0,1,0), include.drift = FALSE)
+summary(fit)
+```
+
+```{r}
+# Generate the forecast
+forecast_result <- forecast(fit, h = 5)
+
+# Plot the forecast
+autoplot(forecast_result) +
+  labs(title = "ARIMA(0,1,0) Forecast",
+       x = "Time",
+       y = "Number of Respondents") +
+  theme_minimal()
+```
+
+The ARIMA predicts that confidence in education will remain low over time.
+
+## Government Spending on Education
+
+We can also do the same for the ratio of government spending on education to total government spending
+
+```{r}
+govt_ratio_ts <- ts(nipa$educ_govt,
+                    start = min(nipa$year),
+                    end   = max(nipa$year),
+                    frequency = 1) 
+
+ggAcf(govt_ratio_ts, 50) +
+  ggtitle("Autocorrelation Function for the Ratio of Government Spending\non Education to Total Government Spending") +
+  theme_minimal()
+```
+
+This plot shows clear autocorrleation. Lets confirm stationarity with an augmented Dickey Fuller test.
+
+```{r}
+tseries::adf.test(govt_ratio_ts)
+```
+
+Because the p-values for this test is greater than 0.05, we cannot reject the null hypothesis that these series are not stationary.
+
+Lets try to correct this with differencing.
+
+```{r}
+diff_1 <- diff(govt_ratio_ts)
+ggAcf(diff_1,50) +
+  ggtitle("ACF of First-Order Differenced Series") +
+  theme_minimal()
+```
+
+It appears that one round of differencing potentially wasn't sufficient so lets try again.
+
+```{r}
+diff_2 <- diff(govt_ratio_ts, differences = 2)
+ggAcf(diff_2,50) +
+  ggtitle("ACF of Second-Order Differenced Series") +
+  theme_minimal()
+```
+
+```{r}
+ggPacf(diff_2,50) +
+  ggtitle("PACF of Second-Order Differenced Series") +
+  theme_minimal()
+```
+
+This plot looks much better. With this, we can proceed with the ARIMA.
+
+First lets find the optimal parameters
+
+```{r,warning=FALSE}
+# Define parameter ranges
+p_range <- 0:6
+d_range <- 2
+q_range <- 0:6
+
+# Calculate total combinations
+n_combinations <- length(p_range) * length(d_range) * length(q_range)
+
+# Create an empty matrix to store results
+results_matrix <- matrix(NA, nrow = n_combinations, ncol = 6)
+
+# Initialize index for matrix row
+i <- 1
+
+# Loop through combinations of ARIMA model parameters
+for (q in q_range) {
+  for (p in p_range) {
+    d <- d_range
+
+    # Fit ARIMA model with specified (p,d,q)
+    model <- Arima(govt_ratio_ts, order = c(p, d, q), include.drift = TRUE)
+
+    # Store model parameters and AIC/BIC/AICc values in matrix
+    results_matrix[i, ] <- c(p, d, q, model$aic, model$bic, model$aicc)
+
+    # Increment row index
+    i <- i + 1
+  }
+}
+
+# Convert matrix to data frame
+results_df <- as.data.frame(results_matrix)
+colnames(results_df) <- c("p", "d", "q", "AIC", "BIC", "AICc")
+
+# Find the row with the lowest AIC
+highlight_row <- which.min(results_df$AIC)
+
+# Generate kable table with highlighting for the row with the lowest AIC
+knitr::kable(results_df, align = 'c', caption = "Comparison of ARIMA Models") %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  # Highlight row in yellow
+```
+
+```{r}
+auto.arima(govt_ratio_ts)
+```
+
+The parameter search suggests an ARIMA(1,2,1) while the auto.arima() suggests ARIMA(1,1,0). Lets compare these.
+
+```{r}
+model_output1 <- capture.output(sarima(govt_ratio_ts,1,2,1))
+
+# Find the line numbers dynamically based on a keyword
+start_line <- grep("Coefficients", model_output1)  # Locate where coefficient details start
+end_line <- length(model_output1)  # Last line of output
+
+# Print the relevant section automatically
+cat(model_output1[start_line:end_line], sep = "\n")
+```
+
+```{r}
+model_output2 <- capture.output(sarima(govt_ratio_ts,1,1,0))
+# Find the line numbers dynamically based on a keyword
+start_line <- grep("Coefficients", model_output2)  # Locate where coefficient details start
+end_line <- length(model_output2)  # Last line of output
+
+# Print the relevant section automatically
+cat(model_output2[start_line:end_line], sep = "\n")
+```
+
+Both **Residual Plots** show nearly consistent fluctuation around zero, suggesting that the residuals are nearly stationary with a constant mean and finite variance over time.
+
+Both **Autocorrelation Functions (ACF)** of the residuals reveal very few, if any, significant autocorrelations.
+
+Both **Q-Q Plots** indicate that the residuals follow a near-normal distribution, with minor deviations at the tails, which is typical in time series data.
+
+Both **Ljung-Box Test** p-values remain above the 0.05 significance level, implying no significant autocorrelations left in the residuals.
+
+**Coefficient Significance**: Most model coefficients are significant for both models. Only the constant in the ARIMA(1,1,0) model is insignificant
+
+```{r}
+fit1 <- Arima(govt_ratio_ts, order = c(1,2,1), include.drift = FALSE)
+summary(fit1)
+```
+
+```{r}
+fit2 <- Arima(govt_ratio_ts, order = c(1,1,0), include.drift = TRUE)
+summary(fit2)
+```
+
+The RMSE is slightly lower in the ARIMA(1,1,0) model, but the MAE is slightly larger.
+
+```{r}
+naive <- naive(govt_ratio_ts,h=5)
+mean  <- meanf(govt_ratio_ts,h=5)
+drift <- rwf(govt_ratio_ts,drift=TRUE,h=5)
+accuracy(naive)
+accuracy(mean)
+accuracy(drift)
+```
+
+Furthermore, both models beats the benchmark models. Either model seems like a good choice. Lets plot the ARIMA(1,1,0) model since it is simpler.
+
+```{r}
+# Generate the forecast
+forecast_result1 <- forecast(fit1, h = 5)
+
+# Plot the forecast
+autoplot(forecast_result1) +
+  labs(title = "ARIMA(1,2,1) Forecast",
+       x = "Time",
+       y = "Education Spending / Total Spending") +
+  theme_minimal()
+```
+
+This forecast suggests that education spending relative to total spending will continue to increase slightly over time.
+
+# Conclusion
+
+These analyses imply that that despite the government spending more on education relative to other spending over time, people believe that education should be prioritized more. One possibility is that government spending on education is being misused and isn't have as big of an effect on the quality of education as it should. Another possibility is that government spending in general hasn't been increasing as much as it should so even if the portion of spending that is being used for education increases, the actual amount being spent isn't meeting the demand. 
+
+
+
