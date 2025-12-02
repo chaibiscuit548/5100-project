@@ -37,12 +37,17 @@ gss_raw <- read_excel("data/gss_press.xlsx")
 
 ```{r}
 gss <- gss_raw %>%
-  mutate(partyid  = ifelse(partyid %in% c(".n:  No answer",".d:  Do not Know/Cannot Choose"),
+  mutate(partyid  = ifelse(partyid %in% c(".n:  No answer",
+                                          ".d:  Do not Know/Cannot Choose"),
                            NA, partyid),
-         conpress = ifelse(conpress %in% c("ONLY SOME","HARDLY ANY","A GREAT DEAL"),
+         conpress = ifelse(conpress %in% c("ONLY SOME",
+                                           "HARDLY ANY",
+                                           "A GREAT DEAL"),
                            conpress,NA),
-         polviews = ifelse(polviews %in% c(".i:  Inapplicable",".d:  Do not Know/Cannot Choose",
-                                           ".n:  No answer",".s:  Skipped on Web"), 
+         polviews = ifelse(polviews %in% c(".i:  Inapplicable",
+                                           ".d:  Do not Know/Cannot Choose",
+                                           ".n:  No answer",
+                                           ".s:  Skipped on Web"), 
                            NA, polviews)) %>%
   mutate(party3 = case_when(
     partyid %in% c("Strong democrat", 
@@ -79,7 +84,8 @@ ggplot(conpress, aes(x = year, y = prop, color = conpress)) +
   geom_line(linewidth = 1.2) + 
   scale_y_continuous(labels = scales::percent) +
   labs(
-    title = "Does the respondent have a great deal of confidence,\nonly some confidence,or hardly any confidence in the press?",
+    title = "Does the respondent have a great deal of confidence,
+only some confidence,or hardly any confidence in the press?",
     x = "Year",
     y = "Proportion of Respondents",
     color = "Response"
@@ -253,10 +259,13 @@ press_pol <- gss %>%
          sd_pol    = na.approx(sd_pol,    x = year, na.rm = FALSE))
 
 ggplot(press_pol, aes(x = year)) +
-  geom_line(aes(y = sd_pol, color = "Political Polarization (Left)"), linewidth=1.2) +
-  geom_line(aes(y = 0.5 * mean_conf + 0.5, color = "Mean Press Confidence (Right)"), linewidth=1.2) +
+  geom_line(aes(y = sd_pol, color = "Political Polarization (Left)"), 
+            linewidth=1.2) +
+  geom_line(aes(y = 0.5 * mean_conf + 0.5, color = "Mean Press Confidence (Right)"), 
+            linewidth=1.2) +
   scale_y_continuous(name = "Polarization (SD)",
-                     sec.axis = sec_axis(~ (. - .5) / .5, name = "Mean Press Confidence")) +
+                     sec.axis = sec_axis(~ (. - .5) / .5, 
+                                         name = "Mean Press Confidence")) +
   scale_color_manual(values = c("Political Polarization (Left)" = "firebrick",
                                 "Mean Press Confidence (Right)" = "deepskyblue4")) +
   labs(title="Polarization vs Mean Confidence in the Press Over Time",
@@ -291,7 +300,8 @@ mean_by_pol <- gss %>%
                                       "Conservative",
                                       "Extremely conservative")))
 
-ggplot(mean_by_pol, aes(x = year, y = mean_conf, group = polviews_cat, color = polviews_cat)) +
+ggplot(mean_by_pol, aes(x = year, y = mean_conf, 
+                        group = polviews_cat, color = polviews_cat)) +
   geom_line(linewidth = 0.9) +
   scale_color_manual(name = "Political Ideology",
                      values = c("Extremely liberal" = "navyblue",

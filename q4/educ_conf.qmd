@@ -86,7 +86,8 @@ First, lets look at government spending over time in the US. Unfortunately, the 
 ## NIPA Data
 ggplot(data = nipa, aes(x=year,y=educ_govt)) +
   geom_line() + 
-  labs(title="Proportion of Government Spending on Education\nto Total Government Spending Over time",
+  labs(title="Proportion of Government Spending on Education
+to Total Government Spending Over time",
        x = "Year",
        y = "Proportion") +
   theme_minimal()
@@ -219,7 +220,8 @@ ggplot(nateduc_nipa, aes(x = 100*educ_govt, y = prop)) +
   geom_smooth(method = "lm") +
   facet_wrap(~ response) +
   labs(
-    title = "Confidence in US amount of Education Spending vs\nEducation Share of Total Government Spending",
+    title = "Confidence in US amount of Education Spending vs
+            \nEducation Share of Total Government Spending",
     x = "Education Spending as % of Total Government Spending",
     y = "Proportion of Respondents"
   ) +
@@ -235,7 +237,8 @@ ggplot(nateduc_nipa, aes(x = 100*educ_gdp, y = prop)) +
   geom_smooth(method = "lm") +
   facet_wrap(~ response) +
   labs(
-    title = "Confidence in Amoutn of US Education Spending vs\nEducation Share of GDP",
+    title = "Confidence in Amoutn of US Education Spending vs
+Education Share of GDP",
     x = "Education Spending as % of GDP",
     y = "Proportion of Respondents"
   ) +
@@ -257,7 +260,8 @@ ggplot(coneduc_nipa, aes(x = 100*educ_govt, y = prop)) +
   geom_smooth(method = "lm") +
   facet_wrap(~ response) +
   labs(
-    title = "Confidence in the US Education System vs\nEducation Share of Total Government Spending",
+    title = "Confidence in the US Education System vs
+Education Share of Total Government Spending",
     x = "Education Spending as % of Total Government Spending",
     y = "Proportion of Respondents"
   ) +
@@ -304,7 +308,8 @@ coneduc_ts <- ts(coneduc_ts_df$n,
                  frequency = 1)
 
 ggAcf(coneduc_ts, 50) + 
-  ggtitle("Autocorrelation Function for Numer of Respondents\nWho have HARDLY ANY Confidence in the Education System") + 
+  ggtitle("Autocorrelation Function for Numer of Respondents
+Who have HARDLY ANY Confidence in the Education System") + 
   theme_minimal()
 ```
 
@@ -374,9 +379,10 @@ colnames(results_df) <- c("p", "d", "q", "AIC", "BIC", "AICc")
 highlight_row <- which.min(results_df$AIC)
 
 # Generate kable table with highlighting for the row with the lowest AIC
-knitr::kable(results_df, align = 'c', caption = "Comparison of ARIMA Models") %>%
+knitr::kable(results_df, align = 'c', 
+             caption = "Comparison of ARIMA Models") %>%
   kable_styling(full_width = FALSE, position = "center") %>%
-  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  # Highlight row in yellow
+  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  
 ```
 
 ```{r}
@@ -391,8 +397,8 @@ model_output1 <- capture.output(sarima(coneduc_ts, 0, 1, 0))
 
 ```{r}
 # Find the line numbers dynamically based on a keyword
-start_line <- grep("Coefficients", model_output1)  # Locate where coefficient details start
-end_line <- length(model_output1)  # Last line of output
+start_line <- grep("Coefficients", model_output1)  
+end_line <- length(model_output1) 
 
 # Print the relevant section automatically
 cat(model_output1[start_line:end_line], sep = "\n")
@@ -436,7 +442,8 @@ govt_ratio_ts <- ts(nipa$educ_govt,
                     frequency = 1) 
 
 ggAcf(govt_ratio_ts, 50) +
-  ggtitle("Autocorrelation Function for the Ratio of Government Spending\non Education to Total Government Spending") +
+  ggtitle("Autocorrelation Function for the Ratio of Government Spending
+on Education to Total Government Spending") +
   theme_minimal()
 ```
 
@@ -515,9 +522,10 @@ colnames(results_df) <- c("p", "d", "q", "AIC", "BIC", "AICc")
 highlight_row <- which.min(results_df$AIC)
 
 # Generate kable table with highlighting for the row with the lowest AIC
-knitr::kable(results_df, align = 'c', caption = "Comparison of ARIMA Models") %>%
+knitr::kable(results_df, align = 'c', 
+             caption = "Comparison of ARIMA Models") %>%
   kable_styling(full_width = FALSE, position = "center") %>%
-  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  # Highlight row in yellow
+  row_spec(highlight_row, bold = TRUE, background = "#FFFF99")  
 ```
 
 ```{r}
@@ -530,8 +538,8 @@ The parameter search suggests an ARIMA(1,2,1) while the auto.arima() suggests AR
 model_output1 <- capture.output(sarima(govt_ratio_ts,1,2,1))
 
 # Find the line numbers dynamically based on a keyword
-start_line <- grep("Coefficients", model_output1)  # Locate where coefficient details start
-end_line <- length(model_output1)  # Last line of output
+start_line <- grep("Coefficients", model_output1)  
+end_line <- length(model_output1) 
 
 # Print the relevant section automatically
 cat(model_output1[start_line:end_line], sep = "\n")
@@ -540,8 +548,8 @@ cat(model_output1[start_line:end_line], sep = "\n")
 ```{r}
 model_output2 <- capture.output(sarima(govt_ratio_ts,1,1,0))
 # Find the line numbers dynamically based on a keyword
-start_line <- grep("Coefficients", model_output2)  # Locate where coefficient details start
-end_line <- length(model_output2)  # Last line of output
+start_line <- grep("Coefficients", model_output2) 
+end_line <- length(model_output2)  
 
 # Print the relevant section automatically
 cat(model_output2[start_line:end_line], sep = "\n")
@@ -596,7 +604,4 @@ This forecast suggests that education spending relative to total spending will c
 
 # Conclusion
 
-These analyses imply that that despite the government spending more on education relative to other spending over time, people believe that education should be prioritized more. One possibility is that government spending on education is being misused and isn't have as big of an effect on the quality of education as it should. Another possibility is that government spending in general hasn't been increasing as much as it should so even if the portion of spending that is being used for education increases, the actual amount being spent isn't meeting the demand. 
-
-
-
+These analyses imply that that despite the government spending more on education relative to other spending over time, people believe that education should be prioritized more. One possibility is that government spending on education is being misused and isn't have as big of an effect on the quality of education as it should. Another possibility is that government spending in general hasn't been increasing as much as it should so even if the portion of spending that is being used for education increases, the actual amount being spent isn't meeting the demand.
