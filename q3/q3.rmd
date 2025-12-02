@@ -1,0 +1,454 @@
+---
+title: "5100 Project Q8"
+author: "Bilal Malik"
+date: "2025-11-24"
+output: html_document
+---
+
+# Are there significant differences in trust toward financial institutions across racial/ethnic groups?
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(boot)
+library(lubridate)
+library(stringr)
+library(naniar)
+library(zoo)
+library(tseries)
+library(forecast)
+```
+
+## Data Import
+
+```{r}
+gss <- read_sav("./data/GSS_spss/gss7224_r2.sav")
+
+gss_clean <- gss %>%
+  filter(!is.na(confinan)) %>%
+  mutate(
+    race_cat = case_when(
+      race == 1 ~ "White",
+      race == 2 ~ "Black",
+      race == 3 ~ "Other",
+      TRUE      ~ NA_character_
+    ),
+    ethnicity_binary = case_when(
+      hispanic == 1 ~ "Not Hispanic",
+      hispanic %in% 2:5 ~ "Hispanic",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select(confinan, race_cat, ethnicity_binary, year)
+
+gss_clean <- gss_clean %>%
+  filter(!is.na(race_cat) & !is.na(ethnicity_binary))
+
+gss_clean$year <- as.numeric(gss_clean$year)
+```
+
+## EDA
+
+```{r}
+ggplot(gss_clean, aes(x = factor(confinan))) +
+  geom_bar(fill = "#4C72B0") +
+  geom_text(aes(label = scales::percent(..count../sum(..count..))), 
+            stat = "count", vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Overall Distribution of Trust in Financial Institutions",
+    x = "Trust Level",
+    y = "Number of Respondents"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+> The overall distribution shows that the overwhelming majority of respondents hold a **moderate level of trust** in financial institutions, with 56.0% choosing **Trust Level 2 ("Some")**.
+
+```{r}
+ggplot(gss_clean, aes(x = race_cat, y = confinan, fill = race_cat)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black", size = 0.5) +
+  scale_y_continuous(breaks = 1:3, labels = c("Great deal", "Some", "Hardly any")) +
+  scale_fill_manual(values = c("White" = "#1F77B4", "Black" = "#FF7F0E", "Other" = "#2CA02C")) +
+  labs(
+    title = "Trust in Financial Institutions by Race",
+    x = "Race",
+    y = "Trust Level"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+| 1. Primary Consistency: The heatmap confirms that **"Some" trust (Level 2)** is the largest category for all three racial groups, ranging from 53.998% (Black) to 56.557% (White). The medians in the box plot also appear similar.
+| 2. Racial Differences (Distrust):The **Black** group shows the **highest proportion** of respondents reporting **"Hardly any" trust (Level 3)** at 26.874%, compared to 24.350% for White and 25.263% for Other.
+| 3. Racial Differences (High Trust): The **White** group shows the lowest proportion of respondents reporting **"Hardly any" trust** and the **highest proportion** of respondents reporting **"Great deal" trust** (19.092%). This suggests that White respondents are slightly more trusting of financial institutions at the extremes than Black respondents.
+
+```{r}
+ggplot(gss_clean, aes(x = ethnicity_binary, y = confinan, fill = ethnicity_binary)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black", size = 0.5) +
+  scale_y_continuous(breaks = 1:3, labels = c("Great deal", "Some", "Hardly any")) +
+  scale_fill_manual(values = c("Not Hispanic" = "#1F77B4", "Hispanic" = "#FF7F0E")) +
+  labs(
+    title = "Trust in Financial Institutions by Ethnicity",
+    x = "Ethnicity",
+    y = "Trust Level"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+```
+
+| The box plot suggests a more pronounced difference when comparing trust by ethnicity. The distribution for **Hispanic** respondents appears shifted toward **lower trust levels**. The IQR for the Hispanic group is visibly wider and centered closer to the boundary between "Some" and "Hardly any," indicating a **greater spread** and a **lower central tendency** of trust compared to the "Not Hispanic" group, whose median is firmly at "Some" trust.
+
+The exploratory analysis suggests that while **"Some"** trust is the dominant view across all groups, there are potential differences at the extremes. **Black** respondents report a slightly **higher proportion of** **"Hardly any"** trust compared to White respondents. Furthermore, the visual evidence from the box plots suggests that **Hispanic** respondents may have a **lower median trust level** and **greater variability** compared to non-Hispanic respondents. This necessitates a formal hypothesis test to determine if these observed differences across racial and ethnic groups are statistically significant.
+
+## Chi-square tests: Trust Levels across Groups
+
+### Race
+
+```{r}
+race_prop <- gss_clean %>%
+  filter(!is.na(race_cat)) %>%
+  group_by(race_cat, confinan) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(race_cat) %>%
+  mutate(prop = count / sum(count)) %>%
+  ungroup()
+
+race_table <- table(gss_clean$confinan, gss_clean$race_cat)
+chisq_race <- chisq.test(race_table)
+
+ggplot(race_prop, aes(x = race_cat, y = prop, fill = factor(confinan, levels = c(1,2,3)))) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = scales::percent(prop)), 
+            position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("steelblue", "orange", "firebrick"),
+                    labels = c("Great deal", "Some", "Hardly any")) +
+  labs(
+    title = "Proportion of Trust in Financial Institutions by Race",
+    x = "Race",
+    y = "Percentage of Respondents",
+    fill = "Trust Level",
+    caption = paste("Chi-square p-value:", signif(chisq_race$p.value, 3))
+  ) +
+  theme_minimal()
+
+```
+
+| The Chi-squared test for **Race** (race_cat) resulted in a **significant p-value of** 0.0153. Since this is less than α=0.05, we **reject the null hypothesis** and conclude there is a statistically significant association between a respondent's race and their level of trust in financial institutions.
+| 1. **Takeaway (Low Trust):** The stacked bar chart shows that the statistical difference is driven by the extremes. The **Black** group has the **highest proportion** of respondents reporting **"Hardly any" trust** at 26.874%, compared to 24.350% for White respondents.
+| 2. **Takeaway (High Trust):** The **White** group has the **lowest proportion** of those reporting "Hardly any" trust and the highest proportion of those reporting **"Some" trust** (56.557%).
+
+### Ethnicity
+
+```{r}
+eth_prop <- gss_clean %>%
+  filter(!is.na(ethnicity_binary)) %>%
+  group_by(ethnicity_binary, confinan) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(ethnicity_binary) %>%
+  mutate(prop = count / sum(count)) %>%
+  ungroup()
+
+eth_table <- table(gss_clean$confinan, gss_clean$ethnicity_binary)
+chisq_eth <- chisq.test(eth_table)
+
+ggplot(eth_prop, aes(x = ethnicity_binary, y = prop, fill = factor(confinan, levels = c(1,2,3)))) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = scales::percent(prop)), 
+            position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("steelblue", "orange", "firebrick"),
+                    labels = c("Great deal", "Some", "Hardly any")) +
+  labs(
+    title = "Proportion of Trust in Financial Institutions by Ethnicity",
+    x = "Ethnicity",
+    y = "Percentage of Respondents",
+    fill = "Trust Level",
+    caption = paste("Chi-square p-value:", signif(chisq_eth$p.value, 3))
+  ) +
+  theme_minimal()
+```
+
+| The Chi-squared test for **Ethnicity** (ethnicity_binary) resulted in an even **more highly significant p-value of** 0.00335. We confidently **reject the null hypothesis** and conclude there is a statistically significant association between a respondent's ethnicity (Hispanic/Not Hispanic) and their level of trust in financial institutions.
+| 1. **Takeaway (Low Trust):** The stacked bar chart clearly shows the source of the difference: the **Hispanic** group has a **higher proportion** of respondents reporting **"Hardly any" trust** at 27.340%, compared to 24.452% for the Not Hispanic group.
+| 2. **Takeaway (Moderate Trust):** Conversely, the **Not Hispanic** group has a slightly **higher proportion** of respondents reporting **"Some" trust** (56.333% vs. 53.500%).
+
+The analysis demonstrates that there are **statistically significant differences** in trust toward financial institutions across both racial and ethnic groups. These differences are consistently characterized by:
+
+1.  **Lower Trust among Minoritized Groups:** Both **Black** respondents and **Hispanic** respondents are statistically **more likely to report "Hardly any" trust** in financial institutions compared to their White and non-Hispanic counterparts, respectively.
+
+2.  **Ethnicity as a Stronger Indicator:** The relationship with **ethnicity** yielded a smaller p-value (p=0.00335), suggesting it is a slightly stronger statistical predictor of differential trust levels in this dataset than the racial grouping.
+
+## Group Means Comparison
+
+### ANOVA: Differences by Race
+
+```{r}
+anova_race <- aov(confinan ~ race_cat, data = gss_clean)
+summary(anova_race)
+TukeyHSD(anova_race)
+plot(TukeyHSD(anova_race))
+```
+
+| The ANOVA test for the mean trust level (confinan) across the three racial categories resulted in a p-value of 0.14. Since p\>0.05, we **fail to reject the null hypothesis**. Despite the statistically significant association found in the Chi-squared test, the ANOVA suggests there is **no statistically significant difference in the mean trust level** in financial institutions among the White, Black, and Other racial groups. The observed differences in means are likely due to chance.
+| 
+| **Plot:** For all three pairs, the 95% confidence intervals for the mean difference **contain zero**, and all adjusted p-values are much greater than 0.05. This confirms that no specific pair of racial groups exhibits a statistically significant difference in their mean trust level. The largest mean difference is between **Black** and **White** respondents (−0.0249), but it's not statistically significant.
+
+```{r}
+# QQ plot of residuals
+qqnorm(residuals(anova_race))
+qqline(residuals(anova_race))
+```
+
+| The **Normal QQ Plot** clearly shows that the residuals from the ANOVA model **do not follow a normal distribution**. The data points form distinct horizontal clusters (stair-step pattern) rather than following the theoretical straight line. This is expected because the dependent variable, `confinan` (Trust in Financial Institutions), is an **ordinal variable** with only three discrete values (1, 2, 3), violating the normality assumption required for a reliable ANOVA. This further supports the Chi-squared test's finding (which is a non-parametric test suitable for categorical/ordinal data) as the more appropriate conclusion.
+
+### t-Test: Differences by Ethnicity
+
+```{r}
+t.test(confinan ~ ethnicity_binary, data = gss_clean)
+```
+
+| The **t-test** compares the mean trust level in financial institutions between Hispanic and Not Hispanic groups. The test yielded a p-value of 0.0336. Since p\<0.05, we **reject the null hypothesis**.
+| **Takeaway:** There is a **statistically significant difference** in the mean trust level toward financial institutions between the Hispanic and Not Hispanic ethnic groups.
+
+The analysis shows **statistically significant differences in trust toward financial institutions across both racial and ethnic groups.**
+
+1.  **Race (Categorical Association):** The Chi-squared test (p=0.0153) and the EDA consistently indicated that the **Black** group reports a **higher proportion of "Hardly any" trust** compared to the White group, suggesting significant differences in the distribution of trust. However, the ANOVA found **no significant difference in the mean trust scores** across the three racial groups (p=0.14), likely due to the ordinal nature of the data and the dominance of the "Some" trust category.
+
+2.  **Ethnicity (Mean Difference):** The t-test provided the clearest parametric evidence, showing a **statistically significant lower mean trust** in financial institutions among **Hispanic respondents** (mean=2.0818) compared to Not Hispanic respondents (mean=2.0524) (p=0.0336).
+
+The consistent finding across both Chi-squared and t-test analyses is that **minoritized groups (Black and Hispanic)** in the GSS dataset exhibit a **lower level of trust** in financial institutions, particularly at the extremes (reporting "Hardly any" trust) and in the overall mean score for ethnicity.
+
+## Bootstrap Confidence Intervals
+
+```{r}
+set.seed(123)
+```
+
+```{r}
+gss_boot_race <- gss_clean %>% filter(!is.na(confinan) & !is.na(race_cat))
+gss_boot_eth <- gss_clean %>% filter(!is.na(confinan) & !is.na(ethnicity_binary))
+
+# functions for mean differences
+mean_diff_race <- function(data, indices) {
+  d <- data[indices, ]
+  mean(d$confinan[d$race_cat == "White"]) - mean(d$confinan[d$race_cat == "Black"])
+}
+
+mean_diff_eth <- function(data, indices) {
+  d <- data[indices, ]
+  mean(d$confinan[d$ethnicity_binary == "Not Hispanic"]) - 
+    mean(d$confinan[d$ethnicity_binary == "Hispanic"])
+}
+
+boot_race <- boot(data = gss_boot_race, statistic = mean_diff_race, R = 5000)
+boot_eth  <- boot(data = gss_boot_eth,  statistic = mean_diff_eth,  R = 5000)
+
+ci_race <- boot.ci(boot_race, type = "perc")$percent[4:5]
+ci_eth  <- boot.ci(boot_eth,  type = "perc")$percent[4:5]
+
+boot_plot <- data.frame(
+  Comparison = c("White vs Black", "Not Hispanic vs Hispanic"),
+  MeanDiff   = c(
+    mean(gss_boot_race$confinan[gss_boot_race$race_cat=="White"]) - 
+      mean(gss_boot_race$confinan[gss_boot_race$race_cat=="Black"]),
+    mean(gss_boot_eth$confinan[gss_boot_eth$ethnicity_binary=="Not Hispanic"]) - 
+      mean(gss_boot_eth$confinan[gss_boot_eth$ethnicity_binary=="Hispanic"])
+  ),
+  Lower = c(ci_race[1], ci_eth[1]),
+  Upper = c(ci_race[2], ci_eth[2])
+)
+
+library(ggplot2)
+ggplot(boot_plot, aes(x = Comparison, y = MeanDiff, color = Comparison)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.2) +
+  labs(
+    title = "Bootstrap 95% Confidence Intervals for Mean Differences in Trust",
+    y = "Mean Difference",
+    x = ""
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("steelblue", "darkorange")) +
+  theme(legend.position = "none")
+```
+
+> This plot displays the 95% confidence intervals for the true difference in the mean trust score (where 1=High trust and 3=Low trust) for the two demographic comparisons:
+>
+> 1.  **Not Hispanic vs. Hispanic**
+>     -   The point (observed difference) is negative. However, the 95% confidence interval for this difference **straddles the zero line** (crossing slightly into the positive and negative territory).
+>
+>     -   **Interpretation:** Because the interval includes zero, this **bootstrap visualization suggests no statistically significant difference** in the mean trust level between the Not Hispanic and Hispanic groups. This contradicts the t-test's p=0.0336 finding, which may be due to the t-test's assumption violations (ordinal data, non-normality) or a difference in the specific data points used for the confidence interval construction (e.g., if the plot used bootstrap CIs not explicitly defined in the provided code outputs).
+> 2.  **White vs. Black**
+>     -   The point (observed difference) is slightly positive (meaning the White group has a **lower mean score, or higher trust**). The 95% confidence interval for this difference **clearly crosses the zero line**.
+>
+>     -   **Interpretation:** The visualization confirms the ANOVA finding that there is **no statistically significant difference** in the mean trust level between White and Black respondents.
+
+Based on the combined results:
+
+1.  **Chi-squared tests** reliably found a **significant association** between race/ethnicity and the *distribution* of trust, particularly showing **higher distrust** ("Hardly any" trust) among **Black** and **Hispanic** respondents.
+
+2.  **Parametric tests (ANOVA/t-test)** and the **Bootstrap CI plot** show that when looking at the *mean* trust score, the differences are small and, in the case of race, **not statistically significant** (ANOVA p=0.14; CI includes 0). The most robust evidence for difference in means comes from the t-test for ethnicity (p=0.0336).
+
+# Time-series Analysis
+
+## Cleaning
+
+```{r}
+trust_ext <- read_csv(
+  "data/trust_in_government_by_race_and_ethnicity_data_2024-06-24.csv",
+  skip = 2,
+  col_names = c("Date", "Source", "Hispanic", "Black", "White", "Asian"),
+  col_types = cols(
+    Date = col_character(),
+    Source = col_character(),
+    Hispanic = col_double(),
+    Black = col_double(),
+    White = col_double(),
+    Asian = col_double()
+  )
+)
+
+trust_ext <- trust_ext %>%
+  mutate(
+    Date = str_remove(Date, " UTC"),
+    Date = mdy(Date)
+  ) %>%
+  filter(!is.na(Date))
+```
+
+## EDA
+
+```{r}
+trust_long <- trust_ext %>%
+  pivot_longer(cols = c(Hispanic, Black, White, Asian),
+               names_to = "Group", values_to = "Trust") %>%
+  filter(!is.na(Trust))
+
+ggplot(trust_long, aes(x = Date, y = Trust, color = Group)) +
+  geom_line(size = 1) +
+  geom_point(size = 1.5) +
+  labs(title = "Trust in Government by Race/Ethnicity Over Time",
+       x = "Year", y = "% Trust") +
+  theme_minimal()
+```
+
+This line plot visualizes the percentage of respondents who report trusting the government (likely corresponding to "Always" or "Most of the time") from approximately 1960 to the 2020s.
+
+-   **Overall Trend:** Trust in government has experienced a **dramatic long-term decline** across all groups since the peak observed in the early 1960s, dropping from a high of nearly 80% for the White group to fluctuating levels typically below 40% in the modern era.
+
+-   **Inter-Group Differences (Early Period):** In the 1960s, **White** respondents exhibited the **highest trust levels**, while **Black** respondents started at a lower level (∼60%), indicating a large historical gap in trust at the beginning of the data series.
+
+-   **Modern Convergence:** The lines show significant volatility and a general trend toward **convergence** in the modern era (post-1990s), with all four groups frequently fluctuating within a similar range (often between 20% and 40% trust).
+
+-   **Hispanic/Asian Volatility:** The **Hispanic** and **Asian** groups tend to show the most **volatility** or have the least continuous data points, particularly before 1990, making their long-term trend analysis more challenging than for the Black and White groups.
+
+### Missing Data
+
+```{r}
+sapply(trust_ext[, c("Hispanic", "Black", "White", "Asian")], function(x) sum(is.na(x)))
+
+gg_miss_var(trust_ext)
+```
+
+| The missingness in the Hispanic, Black, and Asian groups justifies the decision to **focus the formal time-series modeling (ARIMA) solely on the White respondent group**, as their data is the most continuous and stable for building a predictive model.
+
+## Prepare Time Series Object for White Respondents
+
+```{r}
+white_ts_data <- trust_ext %>%
+  select(Date, White) %>%
+  filter(!is.na(White)) %>%
+  arrange(Date)
+
+white_ts <- ts(white_ts_data$White,
+               start = as.numeric(format(min(white_ts_data$Date), "%Y")),
+               end = as.numeric(format(max(white_ts_data$Date), "%Y")),
+               frequency = 1)
+```
+
+### Visualizing Time Series
+
+```{r}
+ggplot(white_ts_data, aes(x = Date, y = White)) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_point(color = "darkred") +
+  labs(title = "Trust in Government Over Time: White Respondents",
+       x = "Year", y = "% Trust") +
+  theme_minimal()
+```
+
+| The historical data is clearly **non-stationary** (the mean and variance change over time), confirming the need for the **ADF test** to determine if differencing is required before fitting the ARIMA model.
+
+## ARIMA Model
+
+```{r}
+adf.test(white_ts)
+
+white_arima <- auto.arima(white_ts)
+summary(white_arima)
+
+checkresiduals(white_arima)
+```
+
+| Since the p-value (0.3852) is much greater than the significance level (α=0.05), we **fail to reject the null hypothesis** of non-stationarity. This confirms that the trust series for White respondents has a unit root, meaning its statistical properties (like the mean) change over time. This justifies the use of **first-differencing** in the ARIMA model, which is represented by the d=1 component.
+
+**Residual Plot (Visuals):**
+
+-   **Time Series Plot:** Shows the residuals fluctuating around zero with no obvious pattern.
+
+-   **ACF Plot:** Shows that the autocorrelation function (ACF) bars fall within the blue dashed significance limits, confirming the **residuals are uncorrelated** (white noise).
+
+-   **Histogram:** Shows the residuals are roughly centered around zero, but the distribution is somewhat **platykurtic** (flatter than the normal curve), suggesting a slight violation of the normality assumption, which is common in real-world time series.
+
+### Forecasting for Next 10 years
+
+```{r}
+white_ts_data <- white_ts_data %>%
+  mutate(Year = as.numeric(format(Date, "%Y")))
+
+loess_fit <- loess(White ~ Year, data = white_ts_data, span = 0.3) 
+white_ts_data <- white_ts_data %>%
+  mutate(Loess_Fit = predict(loess_fit, newdata = white_ts_data))
+
+future_years <- data.frame(Year = seq(max(white_ts_data$Year) + 1,
+                                      by = 1, length.out = 10))
+
+recent_slope <- coef(lm(Loess_Fit ~ Year, data = tail(white_ts_data, 5)))[2]
+last_value <- tail(white_ts_data$Loess_Fit, 1)
+future_trust <- last_value + recent_slope * (future_years$Year - max(white_ts_data$Year))
+
+forecast_loess <- future_years %>%
+  mutate(Trust = pmax(future_trust, 0)) %>%
+  mutate(Type = "Forecast")
+
+historical <- white_ts_data %>%
+  select(Year, White, Loess_Fit) %>%
+  rename(Trust = White) %>%
+  mutate(Type = "Observed")
+
+loess_plot <- bind_rows(
+  historical %>% select(Year, Trust, Type),
+  forecast_loess
+)
+
+ggplot() +
+  geom_line(data = loess_plot, aes(x = Year, y = Trust, color = Type, linetype = Type), size = 1) +
+  geom_point(data = historical, aes(x = Year, y = Trust), color = "steelblue") +
+  geom_line(data = white_ts_data, aes(x = Year, y = Loess_Fit), color = "darkgreen", linetype = "dashed") +
+  scale_color_manual(values = c("Observed" = "steelblue", "Forecast" = "darkred")) +
+  scale_linetype_manual(values = c("Observed" = "solid", "Forecast" = "dashed")) +
+  labs(title = "Observed and Loess-Based Forecast of Trust: White Respondents",
+       x = "Year", y = "% Trust") +
+  theme_minimal()
+```
+
+| The LOESS-based forecast, which relies on the recently observed trends in the smoothed data, suggests that **trust in government among White respondents is projected to remain historically low over the next decade**. The model does not predict any significant recovery in trust, indicating that the modern baseline of low public confidence is expected to persist into the near future. This low-range persistence is consistent with the ARIMA(0,1,0) model, which identified the series as a random walk, implying that current levels are the best predictor for future levels.

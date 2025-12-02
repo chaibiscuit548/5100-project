@@ -1,0 +1,382 @@
+---
+title: "5100 Project Q1"
+author: "Bilal Malik"
+date: "2025-11-25"
+output: html_document
+---
+
+# How does public trust in government relate to public approval for spending on parks, bridges, and mass transportation?
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(car)
+library(haven)
+library(boot)
+library(dplyr)
+```
+
+## Data Import
+
+```{r}
+gss <- read_sav("./data/GSS_spss/gss7224_r2.sav")
+
+vars_needed <- c("conlegis", "confed", "conjudge",
+                 "natpark", "natmass", "natroad",
+                 "year")
+
+gss_sub <- gss %>% select(all_of(vars_needed))
+```
+
+## Cleaning
+
+```{r}
+gss_clean <- gss_sub %>%
+  mutate(
+    conlegis = factor(conlegis, levels = c(1,2,3), ordered = TRUE),
+    confed   = factor(confed,   levels = c(1,2,3), ordered = TRUE),
+    conjudge = factor(conjudge, levels = c(1,2,3), ordered = TRUE),
+
+    natpark  = factor(natpark,  levels = c(1,2,3), ordered = TRUE),
+    natmass  = factor(natmass,  levels = c(1,2,3), ordered = TRUE),
+    natroad  = factor(natroad,  levels = c(1,2,3), ordered = TRUE)
+  )
+```
+
+## EDA
+
+### Distribution of Government Trust Variables
+
+```{r}
+gss_clean %>%
+  select(conlegis, confed, conjudge) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = value, fill = value)) +
+  geom_bar(show.legend = FALSE) +
+  facet_wrap(~ name, scales = "free_y") +
+  scale_fill_brewer(palette = "Blues") +
+  labs(
+    title = "Distribution of Trust in Government Institutions",
+    x = "Response Category",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 15, hjust = 0.5)
+  )
+```
+
+| The dominant response for all three is **"Only Some" trust (Category 2)**, indicating widespread moderate trust rather than strong conviction or deep distrust. Notably, the **Legislative and Executive** branches have a higher count of people reporting **"A Great Deal"** of trust (Category 3) compared to the Courts.
+
+### Distribution of Public Spending Pref
+
+```{r}
+gss_clean %>%
+  select(natpark, natmass, natroad) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = value, fill = value)) +
+  geom_bar(show.legend = FALSE) +
+  facet_wrap(~ name, scales = "free_y") +
+  scale_fill_brewer(palette = "Greens") +
+  labs(
+    title = "Distribution of Public Spending Preferences",
+    x = "Response Category",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 15, hjust = 0.5)
+  )
+```
+
+| The visualization for spending preferences reveals that the most common response for parks (`natpark`) and mass transportation (`natmass`) is **"ABOUT RIGHT" (Category 2)**. This indicates that the majority of the public is satisfied with current spending levels for these two areas. For roads/bridges (`natroad`), "ABOUT RIGHT" (Category 2) is nearly tied with **"TOO LITTLE" (Category 1)**, suggesting a significant portion of the public favors **increased spending** on infrastructure. **"TOO MUCH" (Category 3)** is consistently the least frequent response across all three categories. This establishes the **dependent variable** context for Objective 1, showing that while most people are satisfied or want more spending, there are important variations by public good which can now be correlated with public trust in government.
+
+### Yearly Trends
+
+```{r}
+gss_clean %>%
+  group_by(year) %>%
+  summarize(
+    avg_natpark = mean(as.numeric(natpark), na.rm = TRUE),
+    avg_natmass = mean(as.numeric(natmass), na.rm = TRUE),
+    avg_natroad = mean(as.numeric(natroad), na.rm = TRUE)
+  ) %>%
+  pivot_longer(-year, names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = year, y = value, color = variable)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Trends in Spending Preferences Over Time",
+    x = "Year",
+    y = "Mean Response"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.title = element_blank(),
+    plot.title = element_text(face = "bold", size = 15, hjust = 0.5)
+  )
+```
+
+| This plot displays the average public spending preference over time (where **1 = TOO LITTLE** and **3 = TOO MUCH**). The mean responses generally hover between **1.6 and 1.8**, which consistently falls closer to **"ABOUT RIGHT" (2)** than to **"TOO LITTLE" (1)**, indicating the average American is slightly satisfied with, or slightly wants to **increase**, current spending levels. The overall **downward trend** in the mean response observed across all three areas since their peaks around the late 1980s/early 1990s (e.g., from 1.8 to 1.5) indicates that the public has become **more inclined to favor increased spending** (a lower score means closer to 'TOO LITTLE') over the past few decades. This sets the historical context by showing the long-term **increase in demand for public spending** against which the relationship with public trust will be assessed.
+
+## Hypothesis Testing
+
+```{r}
+gss_clean <- gss_sub %>%
+  mutate(
+    conlegis = na_if(conlegis, 0),
+    confed   = na_if(confed, 0),
+    conjudge = na_if(conjudge, 0),
+    natpark  = na_if(natpark, 0),
+    natmass  = na_if(natmass, 0),
+    natroad  = na_if(natroad, 0)
+  ) %>%
+  filter(
+    conlegis %in% c(1,2,3),
+    confed   %in% c(1,2,3),
+    conjudge %in% c(1,2,3),
+    natpark  %in% c(1,2,3),
+    natmass  %in% c(1,2,3),
+    natroad  %in% c(1,2,3)
+  ) %>%
+  mutate(
+    conlegis = factor(conlegis, levels = c(1,2,3),
+                      labels = c("High trust", "Medium trust", "Low trust")),
+    confed   = factor(confed,   levels = c(1,2,3),
+                      labels = c("High trust", "Medium trust", "Low trust")),
+    conjudge = factor(conjudge, levels = c(1,2,3),
+                      labels = c("High trust", "Medium trust", "Low trust")),
+
+    natpark  = factor(natpark,  levels = c(1,2,3),
+                      labels = c("Increase spending", "Keep same", "Decrease spending")),
+    natmass  = factor(natmass,  levels = c(1,2,3),
+                      labels = c("Increase spending", "Keep same", "Decrease spending")),
+    natroad  = factor(natroad,  levels = c(1,2,3),
+                      labels = c("Increase spending", "Keep same", "Decrease spending"))
+  )
+```
+
+```{r}
+# Chi-square: Congress trust × park spending
+chisq_conlegis_natpark <- chisq.test(table(gss_clean$conlegis, gss_clean$natpark))
+chisq_conlegis_natpark
+
+# Chi-square: Court trust × mass transit
+chisq_conjudge_natmass <- chisq.test(table(gss_clean$conjudge, gss_clean$natmass))
+chisq_conjudge_natmass
+
+# Chi-square: Federal trust × road/bridge spending
+chisq_confed_natroad <- chisq.test(table(gss_clean$confed, gss_clean$natroad))
+chisq_confed_natroad
+
+# Expected counts
+chisq_conlegis_natpark$expected
+chisq_conjudge_natmass$expected
+chisq_confed_natroad$expected
+```
+
+| All three tests produced extremely small p-values (\<2.2e−16), which is far less than the conventional α=0.05 threshold. We **reject the null hypothesis** (that trust and spending approval are independent).
+| 1. Congress Trust (conlegis) vs. Park Spending (natpark): χ2=105.02,df=4,p\<2.2e−16.
+| 2. Court Trust (conjudge) vs. Mass Transit (natmass): χ2=127.33,df=4,p\<2.2e−16.
+| 3. Federal Trust (confed) vs. Road Spending (natroad): χ2=232.36,df=4,p\<2.2e−16.
+
+```{r}
+tab <- table(gss_clean$conlegis, gss_clean$natpark)
+df <- as.data.frame(tab)
+
+ggplot(df, aes(Var1, Var2, fill = Freq)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient() +
+  labs(x = "Trust in Congress", y = "Park Spending", fill = "Count") +
+  theme_minimal()
+```
+
+| The data demonstrates a **highly significant relationship** between the **public's trust in government** and **their approval of spending on public goods**. Specifically, the most common public sentiment is characterized by moderate trust in government coupled with a preference to **maintain current spending levels**. However, the crosstabulation suggests that those with **Medium or Low trust** are more numerous and **more inclined to favor increased spending** on these public goods compared to those with High trust, indicating that dissatisfaction with government may not translate into a desire to cut public services.
+
+## Kruskal-Wallis
+
+```{r}
+gss_clean <- gss_clean %>%
+  mutate(
+    natpark_num = as.numeric(natpark),
+    natmass_num = as.numeric(natmass),
+    natroad_num = as.numeric(natroad)
+  )
+
+# Check Homogeneity of Variance
+levene_park <- leveneTest(natpark_num ~ conlegis, data = gss_clean)
+levene_mass <- leveneTest(natmass_num ~ conjudge, data = gss_clean)
+levene_road <- leveneTest(natroad_num ~ confed, data = gss_clean)
+
+levene_park
+levene_mass
+levene_road
+```
+
+| The **Levene's Tests** for all three spending/trust pairs (Parks/Congress, Mass Transit/Courts, Roads/Federal) yielded highly significant p-values (p\<2.2e−16). This result confirms that the assumption of **homogeneity of variances is violated** for all comparisons. This justifies the use of the non-parametric **Kruskal-Wallis test** instead of a traditional ANOVA.
+
+```{r}
+# Kruskal-Wallis Tests
+kruskal_park  <- kruskal.test(natpark_num ~ conlegis, data = gss_clean)
+kruskal_mass  <- kruskal.test(natmass_num ~ conjudge, data = gss_clean)
+kruskal_road  <- kruskal.test(natroad_num ~ confed, data = gss_clean)
+
+kruskal_park
+kruskal_mass
+kruskal_road
+```
+
+| The Kruskal-Wallis tests assessed whether the median spending preference differed significantly across the three trust groups (Low, Medium, High).
+| **1. Roads/Federal Trust (**natroad vs. confed): This relationship is **highly significant** (χ2=57.418,df=2,p=3.403e−13). We reject the null hypothesis, concluding that at least one trust group's median preference for road spending differs significantly from the others.
+| **2. Parks/Congress Trust (**natpark vs. conlegis): The result is **marginally non-significant** (χ2=5.5055,df=2,p=0.06375). While close to the α=0.05 cutoff, we fail to reject the null hypothesis, suggesting that differences in the median rank are not statistically robust.
+| **3. Mass Transit/Court Trust (**natmass vs. conjudge): The result is **not significant** (χ2=2.1124,df=2,p=0.3478). We fail to reject the null hypothesis.
+
+```{r}
+# Post-Hoc Pairwise Comparisons
+posthoc_road <- pairwise.wilcox.test(
+  gss_clean$natroad_num, 
+  gss_clean$confed,
+  p.adjust.method = "bonferroni"
+)
+
+posthoc_road
+```
+
+| The key finding is that the **Low trust** group's median road spending preference is **significantly different** from both the **High trust** and **Medium trust** groups. The High and Medium trust groups, however, do not significantly differ from each other.
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+
+# Ensure factor ordering
+gss_clean$confed <- factor(
+  gss_clean$confed,
+  levels = c("Low trust", "Medium trust", "High trust")
+)
+
+# Comparisons for post-hoc
+my_comparisons <- list(
+  c("High trust", "Low trust"),
+  c("Medium trust", "Low trust")
+)
+
+ggplot(gss_clean, aes(x = confed, y = natroad_num, fill = confed)) +
+  geom_violin(trim = FALSE, alpha = 0.5) +
+  geom_boxplot(width = 0.15, outlier.size = 0.8) +
+  
+  # Kruskal-Wallis label
+  stat_compare_means(
+    method = "kruskal.test",
+    label = "p.format",
+    label.y = 3.6   # move above violins
+  ) +
+  
+  # Pairwise Wilcoxon
+  stat_compare_means(
+    comparisons = my_comparisons,
+    method = "wilcox.test",
+    p.adjust.method = "bonferroni",
+    label = "p.signif",   # guaranteed allowed
+    hide.ns = TRUE
+  ) +
+  
+  labs(
+    title = "Support for National Roads by Trust in Federal Government",
+    x = "Trust in Federal Government",
+    y = "Support for National Roads (ordinal response)"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(legend.position = "none")
+```
+
+| **1. Median Difference:** The median (represented by the boxplot line) for the **Low trust** group is visibly lower (closer to 1, "Increase spending") than the medians for the Medium and High trust groups.
+| **2. Distribution Shape:** The distribution for the **Low trust** group is more skewed toward the **"Increase spending" (1) category** than the other two groups, which are centered closer to the **"Keep same" (2) category**.
+| **3. Significance:** The plot's annotations confirm the post-hoc results: there is a highly significant difference (\*\*\*\*) between **Low trust** and **Medium trust** and between **Low trust** and **High trust**.
+
+## Bootstrap
+
+```{r}
+set.seed(123)
+
+gss_boot <- gss_clean %>%
+  mutate(
+    park_increase = ifelse(natpark == "Increase spending", 1, 0),
+    mass_increase = ifelse(natmass == "Increase spending", 1, 0),
+    road_increase = ifelse(natroad == "Increase spending", 1, 0),
+
+    conlegis = factor(conlegis, levels = c("Low trust", "High trust")),
+    conjudge = factor(conjudge, levels = c("Low trust", "High trust")),
+    confed   = factor(confed,   levels = c("Low trust", "High trust"))
+  )
+
+gss_park <- gss_boot %>% filter(conlegis %in% c("High trust", "Low trust"))
+gss_mass <- gss_boot %>% filter(conjudge %in% c("High trust", "Low trust"))
+gss_road <- gss_boot %>% filter(confed %in% c("High trust", "Low trust"))
+
+diff_prop <- function(data, indices, outcome_var, group_var) {
+  d <- data[indices, ]
+  prop_high <- mean(d[[outcome_var]][d[[group_var]] == "High trust"])
+  prop_low  <- mean(d[[outcome_var]][d[[group_var]] == "Low trust"])
+  return(prop_high - prop_low)
+}
+```
+
+```{r}
+boot_park <- boot(data = gss_park,
+                  statistic = function(d, i) diff_prop(d, i, "park_increase", "conlegis"),
+                  R = 5000)
+
+boot_mass <- boot(data = gss_mass,
+                  statistic = function(d, i) diff_prop(d, i, "mass_increase", "conjudge"),
+                  R = 5000)
+
+boot_road <- boot(data = gss_road,
+                  statistic = function(d, i) diff_prop(d, i, "road_increase", "confed"),
+                  R = 5000)
+```
+
+```{r}
+boot.ci(boot_park, type = c("perc", "bca"))
+boot.ci(boot_mass, type = c("perc", "bca"))
+boot.ci(boot_road, type = c("perc", "bca"))
+```
+
+| The bootstrap analysis provides 95% confidence intervals for the true difference in the proportion of people who want to **"Increase spending"** between the **High trust** group and the **Low trust** group. Since all three confidence intervals **do not contain zero**, we conclude there is a statistically significant difference in the desire for increased spending between the High trust and Low trust groups for all three public goods. Because all confidence intervals are entirely negative, the true difference (PropHigh​ − PropLow​) is less than zero. This means that; **PropHigh ​\< PropLow**​. Therefore, the **Low trust group** has a **higher proportion** of respondents who want to **increase spending** compared to the High trust group.
+
+```{r}
+boot_df <- data.frame(
+  park  = boot_park$t,
+  mass  = boot_mass$t,
+  road  = boot_road$t
+) %>%
+  pivot_longer(cols = everything(), names_to = "type", values_to = "diff_prop")
+```
+
+```{r}
+ggplot(boot_df, aes(x = diff_prop, fill = type)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ type, scales = "free") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Bootstrap Distribution of Differences in Proportion",
+    x = "Difference in Proportion (High trust - Low trust)",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+
+```
+
+| 1. The entire distribution for all three public goods (Mass, Park, and Road) is shifted to the **left of the red dashed line (0)**.
+| 2. The **Road spending** distribution (road) is the most pronounced, peaking near −0.075, confirming that the difference in proportion for road spending is the largest.
+| 3. The **Park** and **Mass Transit** distributions are tighter and closer to zero, but still entirely negative, confirming a smaller but significant difference.
+
+## Results
+
+**The relationship between public trust in government and approval for spending on public goods is statistically significant and negative.**
+
+For all three types of spending (parks, mass transit, and roads/bridges), the analysis consistently shows that **respondents with Low trust in government are significantly more likely to favor increased spending** than those with High trust. The largest difference is seen in **Roads/Bridges**, where the proportion of those wanting increased spending is approximately **5% to 8.5% higher** in the Low trust group compared to the High trust group. This strongly suggests that a lack of trust in the institutions managing the funds does not lead the public to demand cuts in public services; instead, the group most distrustful of government is simultaneously the group most demanding of infrastructure and public goods investment.
