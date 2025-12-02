@@ -1,5 +1,5 @@
 ---
-title: "Subquestion 3: Government Expenditure"
+title: "Subquestion 5: Government Expenditure"
 author: "Kylie King"
 output:
   html_document:
@@ -8,7 +8,7 @@ output:
 
 This document explores the relationship between the approval for yearly government spending and public trust in government by political party. Specifically, it aims to answer the following question.
 
-# Subquestion 3
+# Subquestion 5
 
 Is the amount of public trust in the government correlated with the amount of government spending in a year, and is that correlation different between Democratic and Republican respondents?
 

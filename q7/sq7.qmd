@@ -1,5 +1,5 @@
 ---
-title: "Subquestion 2: Social Security Funding"
+title: "Subquestion 7: Social Security Funding"
 author: "Kylie King"
 output:
   html_document:
@@ -8,7 +8,7 @@ output:
 ---
 This document explores the relationship between the approval for government spending on Social Security and public trust in government. Specifically, it aims to answer the following question.
 
-# Subquestion 2
+# Subquestion 7
 
 With the Social Security fund expected to be depleted by 2033,[^note1] has the proportion of people who think we are spending too little on social security increased in recent years? Does this correlate at all with the public trust scores?
 
