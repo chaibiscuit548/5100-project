@@ -21,12 +21,14 @@ First I'll load in the total expenditures data. This runs quarterly, but we are 
 
 ```{r, message=FALSE, warning=FALSE}
 #| label: initializing packages sq3
+#make sure to set this folder as the current working directory before running the code
 suppressPackageStartupMessages(library('tidyverse'))
 suppressPackageStartupMessages(library('car'))
 suppressPackageStartupMessages(library('lmPerm'))
+
 ```
 
-Expenditure data from https://fred.stlouisfed.org/series/FGEXPND. Data is stored in millions of USD (ie 4000 = $4 billion)
+
 The following data was collected from the Federal Reserve Bank of St. Louis, which synthesized the data from the U.S. Bureau of Economic Analysis. The first dataset details total government expenditures by year, and each value is stored in millions of USD (ie 4000 = $4 billion).[^note1] The second details total Gross Domestic Product (GDP) per year. [^note2]
 ```{r}
 options(readr.show_col_types = FALSE)
@@ -120,7 +122,7 @@ We will first examine the yearly government expenditure data from FRED.
 ```{r fig.width=12, fig.height=6, echo=TRUE}
 #| label: expenditure EDA
 ggplot(yearly_expenditures, aes(x = year)) +
-  geom_line(aes(y = year_sum_exp), size = 1.5, color='darkgreen') +
+  geom_line(aes(y = year_sum_exp), linewidth = 1.5, color='darkgreen') +
   labs(
     x = "Year",
     y = "Government Expenditures in millions $",
@@ -137,7 +139,7 @@ econ_combined <- yearly_gdp |> left_join(yearly_expenditures, by = "year")
 econ_combined <- econ_combined |> mutate(p_exp_of_gdp = year_sum_exp/year_sum_gdp)
 
 ggplot(econ_combined, aes(x = year)) +
-  geom_line(aes(y = p_exp_of_gdp), size = 1.5, color='darkgreen') +
+  geom_line(aes(y = p_exp_of_gdp), linewidth = 1.5, color='darkgreen') +
   labs(
     x = "Year",
     y = "Proportion",
@@ -150,8 +152,8 @@ We still see a slight increase over time, where the federal government has gradu
 ```{r fig.width=12, fig.height=6, echo=TRUE}
 #| label: public trust eda
 ggplot(prop_parties_public_trust, aes(x = year)) +
-  geom_line(aes(y = rep_trust_prop, color = "Republican"), size = 1.5) +
-  geom_line(aes(y = dem_trust_prop, color = "Democrat"), size = 1.5) +
+  geom_line(aes(y = rep_trust_prop, color = "Republican"), linewidth = 1.5) +
+  geom_line(aes(y = dem_trust_prop, color = "Democrat"), linewidth = 1.5) +
   scale_y_continuous(labels = scales::percent, sec.axis = dup_axis()) +
   scale_color_manual(values = c("Republican" = "firebrick4", "Democrat" = "royalblue2")) +
   labs(
@@ -170,9 +172,9 @@ This plot shows a gradual declne over time in the overall public trust in govern
 combine_exp_parties <- prop_parties_public_trust |> left_join(econ_combined, by = "year")
 
 ggplot(combine_exp_parties, aes(x = year)) +
-  geom_line(aes(y = rep_trust_prop, color = "Republican"), size = 1.5) +
-  geom_line(aes(y = dem_trust_prop, color = "Democrat"), size = 1.5) +
-  geom_line(aes(y = p_exp_of_gdp, color = "Expenditure (prop of GDP)"), size = 1.5) +
+  geom_line(aes(y = rep_trust_prop, color = "Republican"), linewidth = 1.5) +
+  geom_line(aes(y = dem_trust_prop, color = "Democrat"), linewidth = 1.5) +
+  geom_line(aes(y = p_exp_of_gdp, color = "Expenditure (prop of GDP)"), linewidth = 1.5) +
   scale_y_continuous(labels = scales::percent, sec.axis = dup_axis()) +
   scale_color_manual(values = c("Republican" = "firebrick4", "Democrat" = "royalblue2", "Expenditure (prop of GDP)" = "darkgreen")) +
   labs(
@@ -216,16 +218,9 @@ Next we must check our assumptions to ensure we can run a standard ANCOVA test.
 #fitting the model
 model <- lm(approval ~ p_exp_of_gdp * party, data = pivoted_df)
 
-#doing a linearity check
-ggplot(pivoted_df, aes(x = p_exp_of_gdp, y = approval, color = party)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(title = "Linearity check by party") +
-    scale_color_manual(values = c("royalblue2", "firebrick4"))
-
-#and checking the residuals for normality: These appear normally distributed!
+# checking the residuals for normality: These appear normally distributed!
 res <- residuals(model)
-hist(res, main = "Histogram of residuals", xlab = "Residuals")
+hist(res, main = "Histogram of ANCOVA Residuals", xlab = "Residuals")
 qqnorm(res); qqline(res)
 
 # that deviation on the far right makes it not normally distributed
