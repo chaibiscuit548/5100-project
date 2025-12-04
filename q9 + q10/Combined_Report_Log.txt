@@ -1,0 +1,31 @@
+Report:
+Question 12
+Question 13
+
+Objective: 
+To measure whether trust in general public, federal government, and local government institutions varied significantly by age according to respondents in 5 major US cities, and whether those same respondents felt differently pre and post the US general election of 2024.
+
+Data: PR-IPA Urban Public Attitudes Phone Survey 2023-2024 Pilot Program, SUBSET of <= 2000
+
+Result: Public trust in non-governmental institutions did not vary significantly pre and post-election, but there was a definite age component difference across all categories because no matter the question, each age group felt differently about how much they trusted the following 
+
+1. Trust in "federal government institutions" pre/post election
+2. Trust in "local government institutions" pre/post election
+3. Trust in "public institutions that aimed to serve every American"
+
+The base take-home point: in general, with few exceptions, older people trust the government and public institutions more, and younger voting-eligible people are less politically engaged but also do not trust both government and general public institutions as much. 
+
+Methodology:
+Beyond basic cleaning and normalization protocols, the following was used:
+
+In order to determine normality, we used a combination of Shapiro-Wilks and skew-kurtosis testing. We could have easily assumed normality due to the central limit theorem because of the sufficiently large sample size. However, in order to double-check, the Shapiro-Wilks test was used. Ironically, sometimes the SW test becomes oversensitive with very large n, so skewness and kurtosis levels were also checked. Minimal values (close to zero) for both confirmed that the data is, for our purposes, close enough to normal to be utilized. 
+
+Pardis note: Shapiro's not working as expected with larger n was something we never discussed in depth in class and I completely forgot it could even happen, guess that's why real data is always a game changer. Never had to fall back on additional metrics before. 
+
+Lavene's test was used to make sure that variance was consistent among respondent groups. Now, having consistent variance as to lend the data statistical ease-of-use is not an accident, pollsters pick their markets on purpose for exactly this reason, but it was good to check regardless. 
+
+ANOVA was used to compare respondents across age groups. There was, unsurprisingly, a statistically significant relationship between a respondent's age and how their trust level in general public, federal and local government institutions. Note that the response for trust in all cases was recorded as a 1-5 numerical interpretation of a  Likert scale value.
+
+Paired t-test was used to compare pre and post election changes in trust levels, though the change was obvious enough to be seen on basic graphs, there was definitely a statistically significant relationship. 
+
+
