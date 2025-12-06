@@ -286,13 +286,23 @@ gss_long <- gss_num %>%
 
 ggplot(gss_long, aes(x = year, y = mean_value, color = variable)) +
   geom_line(size = 1.1) +
+  scale_color_manual(
+    values = c(
+      "mean_nateduc" = "firebrick",  
+      "mean_coneduc" = "steelblue"   
+    ),
+    labels = c(
+      "mean_nateduc" = "Mean Perception\nof Spending",
+      "mean_coneduc" = "Mean Confidence\nin Education"
+    )
+  ) +
   labs(
     title = "Mean Education Attitudes Over Time",
     x = "Year",
     y = "Mean Value",
     color = "Variable"
   ) +
-  theme_minimal()
+  theme_bw()
 ```
 
 Now that we've looked at the variables of interest separately, lets investigate how spending and confidence in education relate to each other. The following charts show how opinions about the amount of education spending relate to actual education spending.

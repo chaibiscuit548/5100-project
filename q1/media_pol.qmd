@@ -37,10 +37,7 @@ gss_raw <- read_excel("data/gss_press.xlsx")
 
 ```{r}
 gss <- gss_raw %>%
-  mutate(partyid  = ifelse(partyid %in% c(".n:  No answer",
-                                          ".d:  Do not Know/Cannot Choose"),
-                           NA, partyid),
-         conpress = ifelse(conpress %in% c("ONLY SOME",
+  mutate(conpress = ifelse(conpress %in% c("ONLY SOME",
                                            "HARDLY ANY",
                                            "A GREAT DEAL"),
                            conpress,NA),
@@ -48,19 +45,21 @@ gss <- gss_raw %>%
                                            ".d:  Do not Know/Cannot Choose",
                                            ".n:  No answer",
                                            ".s:  Skipped on Web"), 
-                           NA, polviews)) %>%
-  mutate(party3 = case_when(
-    partyid %in% c("Strong democrat", 
-                   "Not very strong democrat") ~ "Democrat",
-    partyid %in% c("Strong republican",
-                   "Not very strong republican") ~ "Republican",
-    partyid %in% c("Independent (neither, no response)",
-                   "Independent, close to republican",
-                   "Independent, close to democrat") ~ "Independent")) %>%
-  mutate(year = as.numeric(year),
-         id_ = as.numeric(id_))
-
-gss_balanced <- gss %>% drop_na()
+                           NA, polviews),
+         age = ifelse(age %in% c(".n:  No answer",
+                                 ".d:  Do not Know/Cannot Choose",
+                                 ".i:  Inapplicable"),
+                      NA, age),
+         race = ifelse(race == ".i:  Inapplicable", NA, race),
+         income = ifelse(income %in% c(".i:  Inapplicable",
+                                       ".d:  Do not Know/Cannot Choose",
+                                       ".r:  Refused",
+                                       ".n:  No answer",
+                                       ".s:  Skipped on Web"),
+                         NA, income),
+         year = as.numeric(year),
+         id_ = as.numeric(id_)) %>%
+  select(-partyid)
 ```
 
 # Data Analysis
@@ -95,39 +94,110 @@ only some confidence,or hardly any confidence in the press?",
 
 It seems pretty evident that confidence in the press has decreased significantly over time. In fact, the majority of respondents in 2024 have hardly any confidence in the press.
 
+## Demographic Characteristics 
+
+Now let's briefly look at how different demographic groups feel about the press.
+
+```{r,warning=FALSE}
+# Mutate data for plotting
+gss_dem <- gss %>%
+  filter(!is.na(conpress)) %>%
+  mutate(conpress_num = case_when(
+    conpress == "HARDLY ANY" ~ 1,
+    conpress == "ONLY SOME" ~ 2,
+    conpress == "A GREAT DEAL" ~ 3
+  ),
+  age = ifelse(age == "89 or older", 89, as.numeric(age)),
+  age_group = case_when(
+    age < 30 ~ "<30",
+    age < 45 ~ "30-44",
+    age < 60 ~ "45-59",
+    TRUE     ~ "60+"
+  ))
+```
+
+
+```{r,message=FALSE}
+# Mean confidence by age group
+gss_dem %>%
+  group_by(year, age_group) %>%
+  summarise(mean_conf = mean(conpress_num, na.rm=TRUE)) %>%
+  ggplot(aes(x=year, y=mean_conf, color=age_group)) +
+  geom_line(linewidth=1.1) +
+  labs(title="Press Confidence Over Time by Age Group",
+       y="Mean Press Confidence") +
+  theme_bw()
+```
+
+
+
+```{r,message=FALSE}
+# Mean confidence by race
+gss_dem %>%
+  group_by(year, race) %>%
+  summarise(mean_conf = mean(conpress_num, na.rm=TRUE)) %>%
+  filter(!is.na(race)) %>%
+  ggplot(aes(x = year, y = mean_conf, color = race)) +
+  geom_line(linewidth=1.1) +
+  labs(title="Press Confidence Over Time by Race",
+       y="Mean Press Confidence") +
+  theme_bw()
+```
+
+
+```{r,message=FALSE}
+# Mean confidence by income group
+gss_dem <- gss_dem %>%
+  mutate(
+    income_clean = as.numeric(str_remove_all(str_extract(income, "\\$?\\d+,?\\d*"), "[$,]")),
+    income_group = case_when(
+      income_clean < 20000 ~ "Low income",
+      income_clean < 50000 ~ "Middle income",
+      TRUE                 ~ "High income"
+    )
+  )
+
+
+gss_dem %>%
+  group_by(year, income_group) %>%
+  summarise(mean_conf = mean(conpress_num, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = mean_conf, color = income_group)) +
+  geom_line(linewidth=1.1) +
+  labs(title="Press Confidence by Income Group",
+       y="Mean Press Confidence",
+       color="Income Group") +
+  theme_bw()
+
+```
+
+We can also test the dependence of the demographic variables with confidence in the press with chi-squared tests. The hypothese are as follows:
+
+$H_0:$ The distributions for the demographic characteristic and confidence in the press **are** independent.
+
+$H_a:$ The distributions for the demographic characteristic and confidence in the press **are not** independent.
+
+```{r}
+# Chi-square: age_group vs conpress, year by year
+age_tab <- table(gss_dem$age_group, gss_dem$conpress)
+chisq.test(age_tab)
+
+# Chi-square: race vs conpress, year by year
+race_tab <- table(gss_dem$race, gss_dem$conpress)
+chisq.test(race_tab)
+
+# Chi-square: income_group vs conpress, year by year
+income_tab <- table(gss_dem$income_group, gss_dem$conpress)
+chisq.test(income_tab)
+```
+
+All tests show p-values less than 0.05 meaning we reject the null hypothesis at the 5% level. In other words, we have enough statistical evidence to conclude that age, race, and income are not independent from confidence in the press.
+
+
 ## Political Polarization
 
 Now lets look at political polarization. The two variables we have are as follows:
 
--   partyid: Generally speaking, does the respondent think of themselves as a Republican, Democrat, Independent, or what?
 -   polviews: On a 7 point scale between extremely liberal and extremely conservative, where would you place yourself on this scale?
-
-Lets start by looking at how the number of respondents for these variables has evolved over time by category. For party identification, we combine the results into 3 categories: Democrat, Independent, and Republican.
-
-```{r}
-gss_party_agg <- gss %>%
-  group_by(year, party3) %>%
-  summarise(n = n(), .groups="drop") %>%
-  group_by(year) %>%
-  drop_na() %>%
-  mutate(prop = n / sum(n))
-  
-ggplot(gss_party_agg, aes(x = year, y = prop, color = party3)) +
-  geom_line(linewidth = 1.2) +
-  scale_y_continuous(labels = scales::percent) +
-  scale_color_manual(name = "Party ID",
-                     values = c("Democrat" = "steelblue2",
-                                "Independent" = "gray40",
-                                "Republican" = "firebrick3")) +
-  labs(
-    title = "Party Identification Over Time",
-    x = "Year",
-    y = "Proportion of Respondents",
-    color = "Party ID"
-  ) +
-  theme_bw() 
-
-```
 
 It appears that over time, the number of people who identify as republican has increased slightly, the number of people who identify as democrat has decreased, and the number of people who identify as independent has increased significantly. This could indicate a dissatisfaction with the current political parties, leading more people to identify as independent. However, this doesn't give us much insight into polarization.
 
@@ -173,15 +243,6 @@ ggplot(polviews, aes(x = year, y = prop, color = polviews)) +
 Most categories appear to have remained fairly stagnant. However there does seem to be a slight increase in the proportion of people who consider themselves extremely liberal and extremely conservative from about 2% to about 5% for both categories. We can see this trend more concretely if we look at the standard deviation of responses. We can do this by converting them back into numerical variables that range from 1 to 7, and then calculating the standard deviation in each year and plotting it.
 
 ```{r,warning=FALSE}
-gss <- gss %>% 
-  mutate(partyid_num = ifelse(partyid == "Strong democrat", 1, 
-                               ifelse(partyid == "Not very strong democrat", 2, 
-                                      ifelse(partyid == "Independent, close to democrat", 3,
-                                             ifelse(partyid == "Independent (neither, no response)", 4,
-                                                    ifelse(partyid == "Independent, close to republican", 5, 
-                                                           ifelse(partyid == "Not very strong republican", 6, 
-                                                                  ifelse(partyid == "Strong republican", 7, NA))))))))
-
 gss <- gss %>%
   mutate(polviews_num = ifelse(polviews == "Extremely liberal", 1, 
                                ifelse(polviews == "Liberal", 2, 
@@ -195,20 +256,17 @@ spread_by_year <- gss %>%
   group_by(year) %>%
   summarise(
     sd_pol = sd(polviews_num, na.rm = TRUE),
-    sd_pid = sd(partyid_num, na.rm = TRUE),
     n = sum(!is.na(polviews_num))
   )
 
 ggplot(data=spread_by_year,aes(x=year)) + 
   geom_line(linewidth = 1.2, aes(y=sd_pol, color="Political Views")) + 
-  geom_line(linewidth = 1.2, aes(y=sd_pid, color="Party ID")) + 
   scale_color_manual(name = "Variable",
-                     values = c("Political Views" = "firebrick",
-                                "Party ID" = "deepskyblue4")) +
+                     values = c("Political Views" = "firebrick")) +
   labs(title = "Standard Deviation of Political Views Over Time",
        x = "Year",
        y = "Standard Deviation") + 
-  theme_minimal()
+  theme_bw()
 ```
 
 We can see that the standard deviation for Party ID hasn't changed much, but the standard deviation of political views has increased from about 1.3 to over 1.5. But is this a significant change?
@@ -271,7 +329,7 @@ ggplot(press_pol, aes(x = year)) +
   labs(title="Polarization vs Mean Confidence in the Press Over Time",
        x="Year",
        color="Variable") +
-  theme_minimal()
+  theme_bw()
 ```
 
 Based on this chart, we can see more clearly that political polarization has been increasing while mean press confidence has been decreasing. But how has average confidence in the press evolved over time for different political ideologies?
@@ -362,7 +420,7 @@ ggplot(chi_by_year, aes(x = year, y = statistic)) +
     x = "Year",
     y = "Chi-square Statistic"
   ) +
-  theme_minimal(base_size = 14)
+  theme_bw(base_size = 14)
 
 ggplot(chi_by_year, aes(x = year, y = p_value)) +
   geom_line(linewidth = 1.2, color = "steelblue") +
@@ -374,7 +432,7 @@ ggplot(chi_by_year, aes(x = year, y = p_value)) +
     x = "Year",
     y = "P-value"
   ) +
-  theme_minimal(base_size = 14)
+  theme_bw(base_size = 14)
 ```
 
 We can see from the p-value plot that most p-values are below the 5% level. This means that we can reject the null hypothesis at the 5% level for most years in the sample. Furthermore, there is a large spike after 2016, which corresponds with the beginning of President Trump's first term.
