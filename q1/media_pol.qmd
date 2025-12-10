@@ -10,15 +10,7 @@ toc: true
 
 ------------------------------------------------------------------------
 
-This document aims to answer the question how has trust in the press changed over time? And has this increased with increased political polarization?
-
-Order:
-
--   Data Exploration
-    -   Trust in the media
-    -   Political Ideology and Polarization
-    -   Press Confidence and Political Ideology/Polarization
--   Hypothesis Testing
+This document aims to answer the question how has trust in the press changed over time? And are there significant differences between different demographic groups or political ideologies? 
 
 # Loading Packages and Data
 
@@ -129,7 +121,38 @@ gss_dem %>%
   theme_bw()
 ```
 
+Evidently, confidence in the press is decreasing for all age groups, but are there significant differences between age groups?
 
+```{r}
+age_diff_by_year <- gss_dem %>%
+  filter(!is.na(age_group), !is.na(conpress)) %>%
+  group_by(year) %>%
+  summarise(
+    chisq = list(chisq.test(table(age_group, conpress))),
+    statistic = chisq[[1]]$statistic,
+    p_value   = chisq[[1]]$p.value,
+    df        = chisq[[1]]$parameter,
+    .groups = "drop"
+  )
+
+ggplot(age_diff_by_year, aes(x = year, y = p_value)) +
+  geom_line(color = "steelblue", linewidth = 1.2) +
+  geom_point(color = "steelblue", size = 1.5) +
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  scale_y_continuous(trans = "log10") +
+  labs(
+    title = "P-values Over Time: Age Group × Press Confidence",
+    subtitle = "Chi-square test for independence (log-scale)",
+    x = "Year",
+    y = "P-value"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+Since the p-values are fairly sporadic and mostly above 0.05, we can say that there is little evidence that confidence in the press varies by age group.
+
+What about race?
 
 ```{r,message=FALSE}
 # Mean confidence by race
@@ -144,6 +167,36 @@ gss_dem %>%
   theme_bw()
 ```
 
+We see a similar trend as in age, although other races may trust the press slightly more than white or black respondents.
+
+```{r}
+race_by_year <- gss_dem %>%
+  filter(!is.na(race), !is.na(conpress)) %>%
+  group_by(year) %>%
+  summarise(
+    chisq     = list(chisq.test(table(race, conpress))),
+    statistic = chisq[[1]]$statistic,
+    p_value   = chisq[[1]]$p.value,
+    df        = chisq[[1]]$parameter,
+    .groups   = "drop"
+  )
+
+ggplot(race_by_year, aes(x = year, y = p_value)) +
+  geom_line(color = "firebrick", linewidth = 1.1) +
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  scale_y_continuous(trans = "log10") +
+  labs(
+    title = "P-values Over Time: Race × Press Confidence",
+    subtitle = "Chi-square test (log-scale)",
+    x = "Year",
+    y = "P-value"
+  ) +
+  theme_minimal()
+```
+
+Again, we see sporadic p-values over time. More of them are below 0.05, however the volatility implies that there still aren't significant differences betwee races. 
+
+Now we can look at income.
 
 ```{r,message=FALSE}
 # Mean confidence by income group
@@ -170,7 +223,36 @@ gss_dem %>%
 
 ```
 
-We can also test the dependence of the demographic variables with confidence in the press with chi-squared tests. The hypothese are as follows:
+Again, we see decreases in confidence across the board. 
+
+```{r}
+income_by_year <- gss_dem %>%
+  filter(!is.na(income_group), !is.na(conpress)) %>%
+  group_by(year) %>%
+  summarise(
+    chisq     = list(chisq.test(table(income_group, conpress))),
+    statistic = chisq[[1]]$statistic,
+    p_value   = chisq[[1]]$p.value,
+    df        = chisq[[1]]$parameter,
+    .groups   = "drop"
+  )
+
+ggplot(income_by_year, aes(x = year, y = p_value)) +
+  geom_line(color = "darkgreen", linewidth = 1.1) +
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  scale_y_continuous(trans = "log10") +
+  labs(
+    title = "P-values Over Time: Income Group × Press Confidence",
+    subtitle = "Chi-square test (log-scale)",
+    x = "Year",
+    y = "P-value"
+  ) +
+  theme_minimal()
+```
+
+We also see similar results from the chi-squared tests, implying that there aren't significant differences between income groups in confidence in the press over time. 
+
+Finally, we can test the dependence of the demographic variables with confidence in the press with chi-squared tests. This will just confirm whether these demographic variables are dependent with press, not if there are differences between groups. The hypotheses are as follows:
 
 $H_0:$ The distributions for the demographic characteristic and confidence in the press **are** independent.
 
@@ -409,8 +491,7 @@ chi_by_year <- gss_chisq %>%
     statistic = map_dbl(chisq, "statistic"),
     p_value   = map_dbl(chisq, "p.value"),
     df        = map_dbl(chisq, ~ .x$parameter)
-  ) %>%
-  select(-chisq)
+  ) 
 
 ggplot(chi_by_year, aes(x = year, y = statistic)) +
   geom_line(linewidth = 1.2, color = "firebrick") +
@@ -435,8 +516,33 @@ ggplot(chi_by_year, aes(x = year, y = p_value)) +
   theme_bw(base_size = 14)
 ```
 
-We can see from the p-value plot that most p-values are below the 5% level. This means that we can reject the null hypothesis at the 5% level for most years in the sample. Furthermore, there is a large spike after 2016, which corresponds with the beginning of President Trump's first term.
+We can see from the p-value plot that most p-values are below the 5% level. This means that we can reject the null hypothesis at the 5% level for most years in the sample. Furthermore, there is a large spike after 2016, which corresponds with the beginning of President Trump's first term. This all indicates that there are significant differences in confidence in press between ideological groups. It appears that liberals tend to trust the press more than conservatives. 
+
+Finally, let's quickly test if political polarization relates to confidence in the press with a pearson correlation test. The hypotheses are:
+
+$H_0: \rho = 0$ i.e. there is no linear relationship between political polarization and press confidence.
+
+$H_a: \rho \neq 0$ i.e. there is a linear relationship between political polarization and press confidence.
+
+```{r}
+ideol_press <- gss %>%
+  mutate(conpress_num = case_when(
+    conpress == "HARDLY ANY" ~ 1,
+    conpress == "ONLY SOME" ~ 2,
+    conpress == "A GREAT DEAL" ~ 3
+  )) %>%
+  group_by(year) %>%
+  summarise(
+    mean_conf = mean(conpress_num, na.rm=TRUE),
+    sd_pol    = sd(polviews_num, na.rm=TRUE)
+  ) %>%
+  arrange(year)
+
+cor.test(ideol_press$sd_pol, ideol_press$mean_conf)
+```
+
+The p-value of the test is less than 0.05 meaning we can reject the null hypothesis. In other words, there is sufficient statistical evidence to conclude that political polarization and press confidence have a linear relationship.
 
 # Conclusion
 
-Although we cannot confidently say that increased political polarization is a cause of or a result of a decrease in press confidence over time, we can say with certainty that the two are closely related and have been covarying, particularly in the past few years.
+Confidence in the press has clearly decreased over the past 50 years across all groups, regardless of age, race, income, or political ideology. We discovered that liberals tend to trust the press more, but their trust has also been decreasing. Furthermore, although we cannot confidently say that increased political polarization is a cause of or a result of a decrease in press confidence over time, we can say with certainty that the two are closely related and have been covarying, particularly in the past few years. 
