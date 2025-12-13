@@ -41,7 +41,7 @@ First, lets clean the data on government spending over time in the US. Unfortuna
 ### BEA NIPA data 
 ## Population to get per capita spending 
 pop <- pop_raw %>%
-  select(-1) %>%
+  dplyr::select(-1) %>%
   slice(-(1:4)) %>%
   filter(row_number() %in% c(1,2,45)) %>%
   t() %>% as.data.frame() %>%
@@ -59,7 +59,7 @@ pop_y <- pop %>%
 
 ## Getting ratio of education spending to total
 govt_educ_y <- gved_y_raw %>%
-  select(-1) %>%
+  dplyr::select(-1) %>%
   slice(-(1:4)) %>%
   filter(row_number() %in% c(1,3,31)) %>%
   t() %>% as.data.frame() %>%
@@ -72,7 +72,7 @@ govt_educ_y <- gved_y_raw %>%
 
 ## Getting annual government spending 
 govt_y <- gv_y_raw %>%
-  select(-1) %>%
+  dplyr::select(-1) %>%
   slice(-(1:4)) %>%
   filter(row_number() %in% c(1,24)) %>% 
   t() %>% as.data.frame() %>%
@@ -89,7 +89,7 @@ govt_y <- gv_y_raw %>%
   
 ## Quarterly government spending on education (for time series forecast)
 govt_q <- gv_q_raw %>%
-  select(-1) %>%
+  dplyr::select(-1) %>%
   slice(-(1:4)) %>%
   filter(row_number() %in% c(1,2,24)) %>% 
   t() %>% as.data.frame() %>%
@@ -375,6 +375,27 @@ ggplot(gss_num_govt, aes(x = gved_pc_y, y = mean_coneduc)) +
     y = "Mean Confidence in Education"
   ) +
   theme_minimal()
+
+```
+
+Just to confirm these results, lets do some pearson correlation tests
+
+```{r}
+coneduc_spend <- coneduc_nipa %>%
+  filter(question == "coneduc",
+         response == "HARDLY ANY") %>%
+  dplyr::select(year, prop, gved_pc_y) %>%
+  drop_na()
+
+nateduc_spend <- nateduc_nipa %>% 
+  filter(question == "nateduc",
+         response == "TOO LITTLE") %>%
+  dplyr::select(year, prop, gved_pc_y) %>%
+  drop_na()
+
+cor.test(coneduc_spend$gved_pc_y,coneduc_spend$prop,method = "pearson")
+cor.test(nateduc_spend$gved_pc_y,nateduc_spend$prop,method = "pearson")
+
 
 ```
 
