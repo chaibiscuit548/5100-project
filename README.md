@@ -3,6 +3,8 @@
 This repository contains folders labeled by question number. Each folder includes analysis, code, and results. Below is a list of all questions covered in the project.
 
 Prominent reference: Gamage, P. (2026). Applied Time Series for Data Science.
+
+
 ---
 
 ## Trust in Press
